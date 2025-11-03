@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import type { ExtractedPageData } from "./types";
 
 export function normalizeURL(url: string): string {
   try {
@@ -44,4 +45,50 @@ export function getFirstParagraphFromHTML(html: string): string {
   const p = jsdom.window.document.querySelector("p");
 
   return p ? p.textContent : "";
+}
+
+export function getURLsFromHTML(html: string, baseUrl: string): string[] {
+  const jsdom = new JSDOM(html);
+  const links = jsdom.window.document.querySelectorAll("a");
+
+  if (links.length === 0) return [];
+
+  const urls = [...links].map((link) => link.getAttribute("href") || "");
+  const absoluteUrls = urls.map((url) =>
+    url.startsWith("/") ? baseUrl + url : url
+  );
+
+  return absoluteUrls;
+}
+
+export function getImagesFromHTML(html: string, baseUrl: string): string[] {
+  const jsdom = new JSDOM(html);
+  const images = jsdom.window.document.querySelectorAll("img");
+
+  if (images.length === 0) return [];
+
+  const urls = [...images].map((img) => img.getAttribute("src") || "");
+  const absoluteUrls = urls.map((url) =>
+    url.startsWith("/") ? baseUrl + url : url
+  );
+
+  return absoluteUrls;
+}
+
+export function extractPageData(
+  html: string,
+  pageUrl: string
+): ExtractedPageData {
+  const h1 = getH1FromHtml(html);
+  const p = getFirstParagraphFromHTML(html);
+  const linkUrls = getURLsFromHTML(html, pageUrl);
+  const imgUrl = getImagesFromHTML(html, pageUrl);
+
+  return {
+    url: pageUrl,
+    h1,
+    first_paragraph: p,
+    outgoing_links: linkUrls,
+    image_urls: imgUrl,
+  };
 }
