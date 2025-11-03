@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeURL } from "./crawl";
+import {
+  getFirstParagraphFromHTML,
+  getH1FromHtml,
+  normalizeURL,
+} from "./crawl";
 
 describe("normalizeURL", () => {
   it("should return a normalized url", () => {
@@ -25,5 +29,98 @@ describe("normalizeURL", () => {
 
   it("should throw an error if url is not valid", () => {
     expect(() => normalizeURL("some text")).toThrow("Invalid url");
+  });
+});
+
+describe("getH1FromHtml", () => {
+  it("should return a content of h1", () => {
+    const html = `
+    <html>
+      <body>
+        <h1>Welcome</h1>
+        <main>
+          <p>This is the first paragraph.</p>
+          <p>This is the second paragraph.</p>
+        </main>
+      </body>
+    </html>`;
+
+    expect(getH1FromHtml(html)).toBe("Welcome");
+  });
+
+  it("should return a content of the first h1 if there are more than 1", () => {
+    const html = `
+    <html>
+      <body>
+        <h1>Welcome</h1>
+        <h1>Hello</h1>
+        <main>
+          <p>This is the first paragraph.</p>
+          <p>This is the second paragraph.</p>
+        </main>
+      </body>
+    </html>`;
+
+    expect(getH1FromHtml(html)).toBe("Welcome");
+  });
+
+  it("should return an empty string if there's no h1", () => {
+    const html = `
+    <html>
+      <body>
+        <main>
+          <p>This is the first paragraph.</p>
+          <p>This is the second paragraph.</p>
+        </main>
+      </body>
+    </html>`;
+
+    expect(getH1FromHtml(html)).toBe("");
+  });
+});
+
+describe("getFirstParagraphFromHTML", () => {
+  it("should return content of first <p> element inside main tag", () => {
+    const pContent = "This is the second paragraph.";
+    const html = `
+    <html>
+      <body>
+        <h1>Welcome</h1>
+        <p>This is the first paragraph.</p>
+        <main>
+          <p>${pContent}</p>
+          <p>This is the third paragraph.</p>
+        </main>
+      </body>
+    </html>`;
+
+    expect(getFirstParagraphFromHTML(html)).toBe(pContent);
+  });
+
+  it("should return content of the first <p> tag if <main> is not present or doesn't contain any <p> tag", () => {
+    const pContent = "This is the first paragraph.";
+    const html = `
+    <html>
+      <body>
+        <h1>Welcome</h1>
+        <p>${pContent}</p>
+        <main>
+          <h2>Secondary header</h2>
+        </main>
+      </body>
+    </html>`;
+
+    expect(getFirstParagraphFromHTML(html)).toBe(pContent);
+  });
+
+  it("should return an empty string if there is not <p> tag", () => {
+    const html = `
+    <html>
+      <body>
+        <h1>Welcome</h1>
+      </body>
+    </html>`;
+
+    expect(getFirstParagraphFromHTML(html)).toBe("");
   });
 });
