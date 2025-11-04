@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import type { ExtractedPageData } from "./types";
-import { exit } from "node:process";
+import pLimit from "p-limit";
+import { ConcurrentCrawler } from "./crawler";
 
 export function normalizeURL(url: string): string {
   try {
@@ -9,10 +10,10 @@ export function normalizeURL(url: string): string {
     }
 
     const urlObj = new URL(url);
-    let { host, pathname, search } = urlObj;
+    let { protocol, host, pathname, search } = urlObj;
     pathname = pathname.split("/").filter(Boolean).join("/");
 
-    return `http://${host}/${pathname}${search}`;
+    return `${protocol}//${host}/${pathname}${search}`;
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(`Invalid url: ${error.message}`);
@@ -56,9 +57,7 @@ export function getURLsFromHTML(html: string, baseUrl: string): string[] {
   if (links.length === 0) return [];
 
   const urls = [...links].map((link) => link.getAttribute("href") || "");
-  const absoluteUrls = urls.map((url) =>
-    url.startsWith("/") ? baseUrl + url : url
-  );
+  const absoluteUrls = urls.map((url) => new URL(url, baseUrl).href);
 
   return absoluteUrls;
 }
@@ -70,9 +69,7 @@ export function getImagesFromHTML(html: string, baseUrl: string): string[] {
   if (images.length === 0) return [];
 
   const urls = [...images].map((img) => img.getAttribute("src") || "");
-  const absoluteUrls = urls.map((url) =>
-    url.startsWith("/") ? baseUrl + url : url
-  );
+  const absoluteUrls = urls.map((url) => new URL(url, baseUrl).href);
 
   return absoluteUrls;
 }
@@ -95,79 +92,9 @@ export function extractPageData(
   };
 }
 
-export async function getHTML(url: string): Promise<string> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "WebCrawler/1.0",
-      },
-    });
-    if (response.status > 300 && response.status < 500) {
-      throw new Error(
-        `Client error [${response.status}]: ${response.statusText}.`
-      );
-    }
-    if (response.status >= 500) {
-      throw new Error(
-        `Server error [${response.status}]: ${response.statusText}.`
-      );
-    }
-    if (!response.headers.get("content-type")?.includes("text/html")) {
-      throw new Error(
-        `Invalid content type: ${response.headers.get("content-type")}.`
-      );
-    }
-    const html = await response.text();
-    return html;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(error.message);
-    } else {
-      console.error("Unexpected error occured.");
-    }
-    return "";
-  }
-}
+export async function crawlSiteAsync(url: string) {
+  const limit = pLimit(10);
+  const crawler = new ConcurrentCrawler(url, limit);
 
-export async function crawlPage(
-  baseUrl: string,
-  currentUrl: string,
-  pages: Record<string, number> = {}
-) {
-  // return pages obj if hosts are different
-  const baseHost = new URL(baseUrl).host;
-  const currentHost = new URL(currentUrl).host;
-
-  if (baseHost !== currentHost) {
-    return pages;
-  }
-
-  let normalizedBaseUrl = baseUrl;
-  const normalizedCurrentUrl = normalizeURL(currentUrl);
-
-  // first run
-  if (baseUrl === currentUrl) {
-    normalizedBaseUrl = normalizeURL(baseUrl);
-  }
-
-  // return if current page already in pages obj
-  if (normalizedCurrentUrl in pages) {
-    pages[normalizedCurrentUrl]++;
-    return pages;
-  } else {
-    pages[normalizedCurrentUrl] = 1;
-  }
-
-  // get html of current page
-  console.log(`Crawling page: ${normalizedCurrentUrl}...`);
-
-  const html = await getHTML(normalizedCurrentUrl);
-  if (!html) return pages;
-  const pageData = extractPageData(html, normalizedCurrentUrl);
-
-  for (const link of pageData.outgoing_links) {
-    await crawlPage(normalizedBaseUrl, link, pages);
-  }
-
-  return pages;
+  return await crawler.crawl();
 }
