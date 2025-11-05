@@ -92,9 +92,13 @@ export function extractPageData(
   };
 }
 
-export async function crawlSiteAsync(url: string) {
-  const limit = pLimit(10);
-  const crawler = new ConcurrentCrawler(url, limit);
+export async function crawlSiteAsync(
+  url: string,
+  maxConcurrency: number,
+  maxPages: number
+) {
+  const limit = pLimit(maxConcurrency);
+  const crawler = new ConcurrentCrawler(url, limit, maxPages);
 
   return await crawler.crawl();
 }

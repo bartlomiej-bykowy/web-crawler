@@ -6,19 +6,34 @@ export class ConcurrentCrawler {
   baseHost: string;
   pages: Record<string, number>;
   limit: LimitFunction;
+  maxPages: number;
+  shouldStop: boolean;
+  allTasks: Set<Promise<void>>;
+  abortController: AbortController;
 
-  constructor(baseUrl: string, limit: LimitFunction) {
+  constructor(baseUrl: string, limit: LimitFunction, maxPages: number) {
     this.baseUrl = normalizeURL(baseUrl);
     this.baseHost = new URL(this.baseUrl).host;
     this.pages = {};
     this.limit = limit;
+    this.maxPages = maxPages;
+    this.shouldStop = false;
+    this.allTasks = new Set();
+    this.abortController = new AbortController();
   }
 
   #addPageVisit(normalizedUrl: string): boolean {
+    if (this.shouldStop) return false;
     if (normalizedUrl in this.pages) {
       this.pages[normalizedUrl]++;
       return false;
     } else {
+      if (Object.keys(this.pages).length >= this.maxPages) {
+        this.shouldStop = true;
+        console.log("Reached maximum number of pages to crawl.");
+        this.abortController.abort();
+        return false;
+      }
       this.pages[normalizedUrl] = 1;
       return true;
     }
@@ -31,6 +46,7 @@ export class ConcurrentCrawler {
           headers: {
             "User-Agent": "WebCrawler/1.0",
           },
+          signal: this.abortController.signal,
         });
         if (response.status > 300 && response.status < 500) {
           throw new Error(
@@ -61,6 +77,7 @@ export class ConcurrentCrawler {
   }
 
   async #crawlPage(currentUrl: string): Promise<void> {
+    if (this.shouldStop) return;
     // return pages obj if hosts are different
     if (this.baseHost !== new URL(currentUrl).host) {
       return;
@@ -74,18 +91,25 @@ export class ConcurrentCrawler {
     // get html of current page
     console.log(`Crawling page: ${normalizedCurrentUrl}...`);
 
-    const html = await this.#getHTML(normalizedCurrentUrl);
+    const html = await this.#getHTML(currentUrl);
     if (!html) return;
     const pageData = extractPageData(html, normalizedCurrentUrl);
 
-    const promises = pageData.outgoing_links.map((link) =>
-      this.#crawlPage(link)
-    );
+    const promises = pageData.outgoing_links.map((link) => {
+      const promise = this.#crawlPage(link);
+      this.allTasks.add(promise);
+      promise.finally(() => this.allTasks.delete(promise));
+      return promise;
+    });
     await Promise.all(promises);
   }
 
   async crawl() {
-    await this.#crawlPage(this.baseUrl);
+    const promise = this.#crawlPage(this.baseUrl);
+    this.allTasks.add(promise);
+    promise.finally(() => this.allTasks.delete(promise));
+    await promise;
+    await Promise.allSettled(Array.from(this.allTasks));
     return this.pages;
   }
 }
