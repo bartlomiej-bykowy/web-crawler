@@ -99,6 +99,5 @@ export async function crawlSiteAsync(
 ) {
   const limit = pLimit(maxConcurrency);
   const crawler = new ConcurrentCrawler(url, limit, maxPages);
-  const data = await crawler.crawl();
-  return data;
+  return await crawler.crawl();
 }
