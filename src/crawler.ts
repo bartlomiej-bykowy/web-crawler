@@ -1,40 +1,39 @@
 import { type LimitFunction } from "p-limit";
 import { extractPageData, normalizeURL } from "./crawl";
+import { ExtractedPageData } from "./types";
 
 export class ConcurrentCrawler {
   baseUrl: string;
   baseHost: string;
-  pages: Record<string, number>;
+  pages: Set<string>;
+  pageData: Record<string, ExtractedPageData>;
   limit: LimitFunction;
   maxPages: number;
   shouldStop: boolean;
   allTasks: Set<Promise<void>>;
-  abortController: AbortController;
 
   constructor(baseUrl: string, limit: LimitFunction, maxPages: number) {
     this.baseUrl = normalizeURL(baseUrl);
     this.baseHost = new URL(this.baseUrl).host;
-    this.pages = {};
+    this.pages = new Set();
+    this.pageData = {};
     this.limit = limit;
     this.maxPages = maxPages;
     this.shouldStop = false;
     this.allTasks = new Set();
-    this.abortController = new AbortController();
   }
 
   #addPageVisit(normalizedUrl: string): boolean {
     if (this.shouldStop) return false;
-    if (normalizedUrl in this.pages) {
-      this.pages[normalizedUrl]++;
+    if (normalizedUrl in this.pageData) {
       return false;
     } else {
-      if (Object.keys(this.pages).length >= this.maxPages) {
+      if (this.pages.size >= this.maxPages) {
         this.shouldStop = true;
         console.log("Reached maximum number of pages to crawl.");
-        this.abortController.abort();
         return false;
       }
-      this.pages[normalizedUrl] = 1;
+      this.pages.add(normalizedUrl);
       return true;
     }
   }
@@ -46,7 +45,6 @@ export class ConcurrentCrawler {
           headers: {
             "User-Agent": "WebCrawler/1.0",
           },
-          signal: this.abortController.signal,
         });
         if (response.status > 300 && response.status < 500) {
           throw new Error(
@@ -77,8 +75,8 @@ export class ConcurrentCrawler {
   }
 
   async #crawlPage(currentUrl: string): Promise<void> {
+    console.log("Number of unique links: ", this.pages.size);
     if (this.shouldStop) return;
-    // return pages obj if hosts are different
     if (this.baseHost !== new URL(currentUrl).host) {
       return;
     }
@@ -93,14 +91,20 @@ export class ConcurrentCrawler {
 
     const html = await this.#getHTML(currentUrl);
     if (!html) return;
-    const pageData = extractPageData(html, normalizedCurrentUrl);
 
-    const promises = pageData.outgoing_links.map((link) => {
+    this.pageData[normalizedCurrentUrl] = extractPageData(
+      html,
+      normalizedCurrentUrl
+    );
+
+    let promises: Promise<void>[] = [];
+    for (const link of this.pageData[normalizedCurrentUrl].outgoing_links) {
+      if (this.shouldStop) break;
       const promise = this.#crawlPage(link);
       this.allTasks.add(promise);
       promise.finally(() => this.allTasks.delete(promise));
-      return promise;
-    });
+      promises.push(promise);
+    }
     await Promise.all(promises);
   }
 
@@ -110,6 +114,7 @@ export class ConcurrentCrawler {
     promise.finally(() => this.allTasks.delete(promise));
     await promise;
     await Promise.allSettled(Array.from(this.allTasks));
-    return this.pages;
+
+    return this.pageData;
   }
 }
