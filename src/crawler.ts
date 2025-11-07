@@ -8,11 +8,15 @@ export class ConcurrentCrawler {
   pages: Set<string>;
   pageData: Record<string, ExtractedPageData>;
   limit: LimitFunction;
-  maxPages: number;
+  maxPages: number | undefined;
   shouldStop: boolean;
   allTasks: Set<Promise<void>>;
 
-  constructor(baseUrl: string, limit: LimitFunction, maxPages: number) {
+  constructor(
+    baseUrl: string,
+    limit: LimitFunction,
+    maxPages: number | undefined
+  ) {
     this.baseUrl = normalizeURL(baseUrl);
     this.baseHost = new URL(this.baseUrl).host;
     this.pages = new Set();
@@ -28,7 +32,7 @@ export class ConcurrentCrawler {
     if (normalizedUrl in this.pageData) {
       return false;
     } else {
-      if (this.pages.size >= this.maxPages) {
+      if (this.maxPages && this.pages.size >= this.maxPages) {
         this.shouldStop = true;
         console.log("Reached maximum number of pages to crawl.");
         return false;
@@ -98,7 +102,7 @@ export class ConcurrentCrawler {
     );
 
     let promises: Promise<void>[] = [];
-    for (const link of this.pageData[normalizedCurrentUrl].outgoing_links) {
+    for (const link of this.pageData[normalizedCurrentUrl].internalLinks) {
       if (this.shouldStop) break;
       const promise = this.#crawlPage(link);
       this.allTasks.add(promise);

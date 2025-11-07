@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import type { ExtractedPageData } from "./types";
+import type { ExtractedPageData, LinksData } from "./types";
 import pLimit from "p-limit";
 import { ConcurrentCrawler } from "./crawler";
 
@@ -50,14 +50,33 @@ export function getFirstParagraphFromHTML(html: string): string {
   return p ? p.textContent : "";
 }
 
-export function getURLsFromHTML(html: string, baseUrl: string): string[] {
+export function getURLsFromHTML(html: string, baseUrl: string): LinksData {
   const jsdom = new JSDOM(html);
   const links = jsdom.window.document.querySelectorAll("a");
 
-  if (links.length === 0) return [];
+  if (links.length === 0) return { externalLinks: [], internalLinks: [] };
 
   const urls = [...links].map((link) => link.getAttribute("href") || "");
-  const absoluteUrls = urls.map((url) => new URL(url, baseUrl).href);
+  // const absoluteUrls = urls.map((url) => new URL(url, baseUrl).href);
+
+  const host = new URL(baseUrl).host;
+  // const result: {external_links: string[]; internal_links: string[]} = {
+  //   external_links: [],
+  //   internal_links: []
+  // }
+
+  const absoluteUrls = urls.reduce<LinksData>(
+    (acc, val) => {
+      const valUrl = new URL(val, baseUrl);
+      if (valUrl.host === host) {
+        acc.internalLinks.add(valUrl.href);
+      } else {
+        acc.externalLinks.add(valUrl.href);
+      }
+      return acc;
+    },
+    { externalLinks: new Set(), internalLinks: new Set() }
+  );
 
   return absoluteUrls;
 }
@@ -86,16 +105,17 @@ export function extractPageData(
   return {
     url: pageUrl,
     h1,
-    first_paragraph: p,
-    outgoing_links: linkUrls,
-    image_urls: imgUrl,
+    firstParagraph: p,
+    externalLinks: [...linkUrls.externalLinks],
+    internalLinks: [...linkUrls.internalLinks],
+    imageUrls: imgUrl,
   };
 }
 
 export async function crawlSiteAsync(
   url: string,
   maxConcurrency: number,
-  maxPages: number
+  maxPages: number | undefined
 ) {
   const limit = pLimit(maxConcurrency);
   const crawler = new ConcurrentCrawler(url, limit, maxPages);
