@@ -10,24 +10,31 @@ export function writeCSVReport(
     "page_url",
     "h1",
     "first_paragraph",
-    "outgoing_link_urls",
+    "internal_links",
+    "external_links",
     "image_urls",
   ];
   const rows: string[] = [headers.join(",")];
 
   for (const page of Object.values(pageData)) {
-    const { url, h1, first_paragraph, outgoing_links, image_urls } = page;
-    const values = [url, h1, first_paragraph, outgoing_links, image_urls].map(
-      (value) => {
-        if (Array.isArray(value)) {
-          if (value.length === 0) {
-            return csvEscape("");
-          }
-          return csvEscape(value.join(";"));
+    const { url, h1, firstParagraph, externalLinks, internalLinks, imageUrls } =
+      page;
+    const values = [
+      url,
+      h1,
+      firstParagraph,
+      internalLinks,
+      externalLinks,
+      imageUrls,
+    ].map((value) => {
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          return csvEscape("");
         }
-        return csvEscape(value);
+        return csvEscape(value.join(";"));
       }
-    );
+      return csvEscape(value);
+    });
 
     rows.push(values.join(","));
   }

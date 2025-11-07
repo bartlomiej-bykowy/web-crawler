@@ -15,8 +15,8 @@ async function main() {
     exit(1);
   }
 
-  let maxConcurrency = 10;
-  let maxPages = 20;
+  let maxConcurrency = 1;
+  let maxPages: number | undefined = undefined;
 
   if (args[1]) {
     const parsedArg = parseInt(args[1]);
